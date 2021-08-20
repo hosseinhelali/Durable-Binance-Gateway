@@ -15,6 +15,7 @@
 	<description>This service  subscribing to Binance data and available it to other services</description>
 	<properties>
 		<java.version>11</java.version>
+		<zookeeper.version>3.7.0</zookeeper.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -35,6 +36,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.zookeeper</groupId>
+			<artifactId>zookeeper</artifactId>
+			<version>${zookeeper.version}</version>
 		</dependency>
 	</dependencies>
 
