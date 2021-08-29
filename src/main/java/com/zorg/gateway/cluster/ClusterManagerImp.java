@@ -223,7 +223,7 @@ public final class ClusterManagerImp implements ClusterManager {
         }
 
         latency.stop();
-        System.out.println(">>>>>>>>>>>>>>>>>>>>>" + latency.getLastTaskTimeMillis());
+//        System.out.println(">>>>>>>>>>>>>>>>>>>>>" + latency.getLastTaskTimeMillis());
     }
 
 }
