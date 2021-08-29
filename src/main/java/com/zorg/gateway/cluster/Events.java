@@ -14,5 +14,14 @@ public class Events {
     }
 
     public final static class LeaderChangedEvent {
+        public String partition;
+        public String newLeader;
+        public String lastLeader;
+
+        public LeaderChangedEvent(String partition, String newLeader, String lastLeader) {
+            this.partition = partition;
+            this.newLeader = newLeader;
+            this.lastLeader = lastLeader;
+        }
     }
 }

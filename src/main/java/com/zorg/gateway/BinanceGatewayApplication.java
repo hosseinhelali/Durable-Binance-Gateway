@@ -9,5 +9,4 @@ public class BinanceGatewayApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(BinanceGatewayApplication.class, args);
 	}
-
 }

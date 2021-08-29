@@ -6,7 +6,7 @@ import java.io.IOException;
 
 public interface ZKClient {
 
-    ZooKeeper connect(String zNode) throws InterruptedException, IOException;
+    ZooKeeper connect(String zNode, int sessionTimeout) throws InterruptedException, IOException;
 
     void close() throws InterruptedException;
 

@@ -11,26 +11,26 @@ import java.util.concurrent.CountDownLatch;
 public class ZKClientImp implements ZKClient {
 
     private static final Logger logger = LoggerFactory.getLogger(ClusterManagerImp.class);
-
-    private static final int sessionTimeout = 2000;
     private final CountDownLatch countDownLatch = new CountDownLatch(1);
 
     private ZooKeeper zooKeeper;
 
 
-    public ZooKeeper connect(String zNode) throws InterruptedException, IOException {
+    public ZooKeeper connect(String zNode, int sessionTimeout) throws InterruptedException, IOException {
         logger.debug("Starting to connect zookeeper nodes : {}", zNode);
-        zooKeeper = new ZooKeeper(zNode, sessionTimeout, watchedEvent -> {
-            if (Watcher.Event.KeeperState.SyncConnected == watchedEvent.getState()) {
-                logger.info("Connected to zookeeper successfully.");
-                countDownLatch.countDown();
-            } else {
-                logger.debug("Zookeeper connection : {}", watchedEvent.getState());
-            }
-        });
+        zooKeeper = new ZooKeeper(zNode, sessionTimeout, this::handleZKEvents);
 
         countDownLatch.await();
         return zooKeeper;
+    }
+
+    private void handleZKEvents(WatchedEvent watchedEvent) {
+        if (Watcher.Event.KeeperState.SyncConnected == watchedEvent.getState()) {
+            logger.info("Connected to zookeeper successfully.");
+            countDownLatch.countDown();
+        } else {
+            logger.debug("Zookeeper connection : {}", watchedEvent.getState());
+        }
     }
 
     public void close() throws InterruptedException {

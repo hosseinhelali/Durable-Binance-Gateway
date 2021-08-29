@@ -19,9 +19,14 @@ class ClusterManagerImpTest {
     void connect() {
 
         try {
-
             ZKClient zkClient = new ZKClientImp();
-            ClusterManager client = new ClusterManagerImp(zkClient.connect("localhost:2181"));
+            ClusterManager client = new ClusterManagerImp(
+                    zkClient.connect(
+                            "localhost:2181",
+                            200
+                    ),
+                    "/partitions",
+                    "/leader");
 
             client.initCluster("zorg_cluster", Arrays.asList("UTC", "BNB"));
 

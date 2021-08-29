@@ -3,54 +3,64 @@ package com.zorg.gateway.cluster;
 import org.apache.zookeeper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.util.StopWatch;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 
-@Component
 public final class ClusterManagerImp implements ClusterManager {
 
     private static final Logger logger = LoggerFactory.getLogger(ClusterManagerImp.class);
+    private static List<String> partitions;
 
-    private final static String root_partition_path = "/partitions";
-    private final static String root_leader_path = "/leader";
+    private final String rootPartitionPath;
+    private final String rootLeaderPath;
+
+    private static String clusterName;
+    private final ZooKeeper zooKeeper;
 
     private final List<LeaderChangedEventHandler> leaderChangedEventHandlers = new ArrayList<>();
     private final List<ClusterMemberChangedEventHandler> clusterMemberChangedEventHandlers =
             new ArrayList<>();
 
-    private static String clusterName;
-    private final ZooKeeper zooKeeper;
+    private final HashMap<String, String> leaders = new HashMap<>();
 
-    public ClusterManagerImp(@Autowired ZooKeeper zooKeeper) {
+
+    public ClusterManagerImp(ZooKeeper zooKeeper,
+                             String rootPartitionPath,
+                             String rootLeaderPath) {
         this.zooKeeper = zooKeeper;
+        this.rootPartitionPath = rootPartitionPath;
+        this.rootLeaderPath = rootLeaderPath;
     }
 
     @Override
     public void initCluster(String clusterName, List<String> partitions) throws KeeperException, InterruptedException {
 
-        this.clusterName = clusterName;
+        ClusterManagerImp.clusterName = clusterName;
+
+        ClusterManagerImp.partitions = partitions;
 
         //create root path
-        this.createZNode(root_partition_path, clusterName);
+        this.createZNode(rootPartitionPath, clusterName);
 
         //create partitions path
         for (String partition : partitions) {
-            String partitionPath = root_partition_path.concat("/").concat(partition);
+            String partitionPath = getPartitionPath(partition);
             this.createZNode(partitionPath, partition);
         }
     }
 
     @Override
-    public String joinToCluster(String hostName, String partition) throws KeeperException, InterruptedException {
+    public String joinToCluster(String hostName, String partition)
+            throws KeeperException, InterruptedException {
 
-        String leaderPath = root_partition_path.concat("/").concat(partition).concat(root_leader_path);
+        String leaderPath = getLeaderPath(partition);
 
-        this.addWatch(root_partition_path.concat("/").concat(partition), this::handleEvent);
+        this.addWatch(rootPartitionPath.concat("/").concat(partition), this::handleEvent);
 
         String nodePath = zooKeeper.create(
                 leaderPath,
@@ -65,10 +75,7 @@ public final class ClusterManagerImp implements ClusterManager {
     public void remove(String partition, String sequence) throws
             KeeperException, InterruptedException {
 
-        String targetNodePath = root_partition_path
-                .concat("/").concat(partition)
-                .concat(root_leader_path)
-                .concat(sequence);
+        String targetNodePath = getNodePath(partition, sequence);
 
         zooKeeper.delete(targetNodePath, -1);
     }
@@ -86,7 +93,7 @@ public final class ClusterManagerImp implements ClusterManager {
     @Override
     public String getLeader(String partition) throws KeeperException, InterruptedException {
 
-        String partitionPath = root_partition_path.concat("/").concat(partition);
+        String partitionPath = getPartitionPath(partition);
 
         List<String> nodes = this.getZNode(partition);
 
@@ -110,7 +117,7 @@ public final class ClusterManagerImp implements ClusterManager {
 
         List<String> clusterNodes = new ArrayList<>();
 
-        String partitionPath = root_partition_path.concat("/").concat(partition);
+        String partitionPath = getPartitionPath(partition);
         List<String> zNodes = zooKeeper.getChildren(partitionPath, true);
 
         for (String node : zNodes) {
@@ -123,10 +130,32 @@ public final class ClusterManagerImp implements ClusterManager {
         return clusterNodes;
     }
 
+    @Override
+    public int getAllChildrenNumber(String partition) throws KeeperException, InterruptedException {
+        String path = getPartitionPath(partition);
+        return zooKeeper.getAllChildrenNumber(path);
+    }
+
+    private String getPartitionPath(String partition) {
+        return rootPartitionPath.concat("/").concat(partition);
+    }
+
+    private String getLeaderPath(String partition) {
+        return getPartitionPath(partition).concat(rootLeaderPath);
+    }
+
+    private String getNodePath(String partition, String sequence) {
+        return getNodePath(partition, sequence).concat(sequence);
+    }
+
+    private String getPartitionName(String nodePath){
+        return nodePath.substring(rootPartitionPath.concat("/").length());
+    }
+
+
     private List<String> getZNode(String partition) throws KeeperException, InterruptedException {
-        String partitionPath = root_partition_path.concat("/").concat(partition);
-        List<String> nodes = zooKeeper.getChildren(partitionPath, true);
-        return nodes;
+        String partitionPath = getPartitionPath(partition);
+        return zooKeeper.getChildren(partitionPath, true);
     }
 
     private void addWatch(String path, Watcher watcher) throws KeeperException, InterruptedException {
@@ -144,13 +173,57 @@ public final class ClusterManagerImp implements ClusterManager {
     }
 
     private void handleEvent(WatchedEvent watchedEvent) {
+        String partition = getPartitionName(watchedEvent.getPath());
         switch (watchedEvent.getType()) {
             case NodeChildrenChanged:
-                for (ClusterMemberChangedEventHandler handler : clusterMemberChangedEventHandlers)
+                for (ClusterMemberChangedEventHandler handler : clusterMemberChangedEventHandlers) {
                     handler.handle(new Events.ClusterMemberChangedEvent(watchedEvent));
+                    this.scanLeaders(partition);
+                }
             case NodeDeleted:
-                for (ClusterMemberChangedEventHandler handler : clusterMemberChangedEventHandlers)
+                for (ClusterMemberChangedEventHandler handler : clusterMemberChangedEventHandlers) {
                     handler.handle(new Events.ClusterMemberChangedEvent(watchedEvent));
+                    this.scanLeaders(partition);
+                }
         }
     }
+
+    private void scanLeaders(String partition) throws RuntimeException {
+        StopWatch latency = new StopWatch();
+
+        latency.start();
+        try {
+            String newLeader = this.getLeader(partition);
+            String lastLeader = leaders.get(partition);
+
+            if (newLeader != null && lastLeader != null) {
+                if (!lastLeader.equals(newLeader)) {
+                    leaders.remove(partition);
+                    leaders.put(partition, newLeader);
+                    if (!newLeader.equals(clusterName)) {
+                        for (LeaderChangedEventHandler handler : leaderChangedEventHandlers) {
+                            handler.handle(new Events.LeaderChangedEvent(partition, newLeader, lastLeader));
+                        }
+                    }
+                }
+            } else {
+                //first node add to cluster or the node joining to cluster
+                if (newLeader != null)
+                    leaders.put(partition, newLeader);
+                else
+                    leaders.put(partition, clusterName);
+            }
+
+        } catch (InterruptedException e) {
+            logger.error("can not scan leaders", e);
+            throw new RuntimeException(e);
+        } catch (KeeperException e) {
+            logger.error("can not scan leaders", e);
+            throw new RuntimeException(e);
+        }
+
+        latency.stop();
+        System.out.println(">>>>>>>>>>>>>>>>>>>>>" + latency.getLastTaskTimeMillis());
+    }
+
 }

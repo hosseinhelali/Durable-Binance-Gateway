@@ -19,5 +19,7 @@ public interface ClusterManager {
     void subscribeOnLeaderChanged(LeaderChangedEventHandler handler);
 
     void subscribeOnClusterMemberChanged(ClusterMemberChangedEventHandler handler);
+
+    int getAllChildrenNumber(String partition) throws KeeperException, InterruptedException;
 }
 
