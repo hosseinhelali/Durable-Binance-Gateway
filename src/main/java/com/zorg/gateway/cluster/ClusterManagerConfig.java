@@ -12,9 +12,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 
-import javax.annotation.PostConstruct;
 import java.io.IOException;
-import java.util.Properties;
 
 @Configuration
 public class ClusterManagerConfig {
@@ -57,9 +55,13 @@ public class ClusterManagerConfig {
     }
 
     private void printConfigs(ClusterConfigs configs) {
-        logger.info("\n --------------------------Cluster configs-------------------------------- \n "
-                + configs.toString().replace(',', '\n') +
-                "\n ------------------------------------------------------------------------ \n ");
+        logger.info(
+                "\n" +
+                " --------------------------Cluster configs-------------------------------- \n" +
+                " " +
+                configs.toString().replace(',', '\n') +
+                "\n ------------------------------------------------------------------------ \n "
+        );
     }
 
     @Bean
